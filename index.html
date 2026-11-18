@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>에어 컨펌 도우미</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
 <style>
   :root{--bg:#f5f6f8;--card:#fff;--line:#d5d8de;--ink:#1d2330;--mute:#6b7280;--acc:#2563eb;--warn:#fff4e5;--bad:#fde8e8}
   *{box-sizing:border-box}
@@ -88,6 +89,8 @@
     <button id="btnBulk">적용</button>
     <button id="btnAddRow">+ 빈 행</button>
     <button class="d" id="btnDelSel">선택 행 삭제</button>
+    <span style="width:14px"></span>
+    <button class="p" id="btnXlsx" title="메일 표와 같은 색·글씨로 F1,2 / F5 시트 엑셀을 내려받습니다">📊 엑셀 다운로드 (F1,2 / F5)</button>
   </div>
   <div class="hint" style="margin-bottom:6px">CONFIRM: <b>11/17</b> → 17-Nov, <b>45k 11/17</b> → 45K 17-Nov 자동 변환 · 주황색 행 = 재고 부족인데 CONFIRM 없음</div>
   <div class="grid-wrap">
@@ -167,7 +170,7 @@ function normConfirm(v){
 function needsConfirm(r){const q=num(r.req),s=num(r.stock)||0;return q!==null && s<q && !String(r.confirm||'').trim()}
 
 /* ---------- parsing ---------- */
-const HEAD={fac:/^fac/,item:/^item/,maker:/^maker|^vendor|^supplier/,part:/^part/,req:/purchase|request|req|q'?ty|qty/,
+const HEAD={fac:/^fac/,item:/^item/,maker:/^maker|^vendor|^supplier/,part:/^part/,req:/purchase|request|remain|req|q'?ty|qty/,
   stock:/^stock/,confirm:/^confirm/,shortDel:/short/,needEtd:/need|etd/,remark:/remark|비고/};
 function cellsFromPaste(text,html){
   if(html && /<table/i.test(html)){
@@ -355,6 +358,53 @@ document.querySelectorAll('[data-tsv]').forEach(b=>b.onclick=async()=>{
   try{await navigator.clipboard.writeText(t);flash('엑셀용 복사됨')}
   catch(e){const ta=document.createElement('textarea');ta.value=t;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();flash('엑셀용 복사됨')}
 });
+
+/* ---------- 엑셀 다운로드 (메일 표와 같은 색·글씨, 시트 F1,2 / F5) ---------- */
+function xlsxSheet(list){
+  const HDR=['FAC','Item cd','Maker','Part Name','Purchase request','STOCK','CONFIRM','Short Del.','NEED ETD','REMARK'];
+  const HBG={STOCK:'FFFF00',CONFIRM:'FFC000',REMARK:'D9D9D9'};
+  const thin={style:'thin',color:{rgb:'000000'}};
+  const border={top:thin,bottom:thin,left:thin,right:thin};
+  const font=(o={})=>({name:'Calibri',sz:10,...o});
+  const cell=(v,st={},num=false)=>{const c={v:v??'',t:'s',s:{border,font:font(st.font||{}),alignment:{horizontal:st.align||'left',vertical:'center'}}};
+    if(st.bg)c.s.fill={patternType:'solid',fgColor:{rgb:st.bg}};
+    if(num){const n=parseFloat(String(v||'').replace(/[, ]/g,''));if(!isNaN(n)&&String(v).trim()!==''){c.v=n;c.t='n';c.z='#,##0'}}
+    return c};
+  const data=[HDR.map(h=>cell(h,{bg:HBG[h]||'FFFFFF',font:{bold:true},align:h==='Part Name'?'left':'center'}))];
+  list.forEach(r=>{
+    const add=r.auto&&r.auto.add, chg=r.auto&&r.auto.chg;
+    const facBg=r.fac==='F5'?'00B0F0':(r.fac==='F1'?'FFFFFF':'FFFF00');
+    const conf=String(r.confirm||'');
+    const confBg=/not confirm|lt\s*\d/i.test(conf)?'FFC000':'F2F2F2';
+    const urg=!isDate(r.needEtd);
+    data.push([
+      cell(r.fac,{bg:facBg,align:'center'}),
+      cell(r.item),
+      cell(r.maker,{bg:'FFFF00'}),
+      cell(r.part,{font:{bold:true,...(add?{color:{rgb:'FF0000'}}:{})}}),
+      cell(r.req,{align:'right',font:(add||chg)?{bold:true,color:{rgb:'FF0000'}}:{}},true),
+      cell(r.stock,{align:'right',bg:'F2F2F2'},true),
+      cell(conf,{align:'right',bg:confBg}),
+      cell(r.shortDel,{align:'right'}),
+      urg?cell(r.needEtd||'URGENT',{align:'center',bg:'FFFF00',font:{bold:true,color:{rgb:'FF0000'}}})
+         :cell(r.needEtd,{align:'center',bg:'9BE5F5',font:{bold:true,color:{rgb:'0070C0'}}}),
+      cell(r.remark,{font:{bold:true,color:{rgb:'FF0000'}}})
+    ]);
+  });
+  const ws=XLSX.utils.aoa_to_sheet(data);
+  ws['!cols']=[5,14,14,46,16,10,16,11,11,16].map(w=>({wch:w}));
+  ws['!freeze']={xSplit:0,ySplit:1};
+  return ws;
+}
+$('#btnXlsx').onclick=()=>{
+  if(!rows.length){alert('리스트가 비어 있습니다.');return}
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,xlsxSheet(groupA()),'F1,2');
+  XLSX.utils.book_append_sheet(wb,xlsxSheet(groupB()),'F5');
+  const d=new Date();const name=`에어컨펌_${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}.xlsx`;
+  XLSX.writeFile(wb,name);
+  flash(`엑셀 다운로드됨 (F1,2: ${groupA().length}건 / F5: ${groupB().length}건)`);
+};
 
 load();render();
 })();
