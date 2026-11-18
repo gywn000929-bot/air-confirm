@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>에어 컨펌 도우미</title>
+<style>
+  :root{--bg:#f5f6f8;--card:#fff;--line:#d5d8de;--ink:#1d2330;--mute:#6b7280;--acc:#2563eb;--warn:#fff4e5;--bad:#fde8e8}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:13px/1.45 "Malgun Gothic","맑은 고딕",system-ui,sans-serif}
+  header{padding:14px 20px;background:#1f2937;color:#fff}
+  header h1{margin:0;font-size:17px}
+  header p{margin:4px 0 0;color:#cbd5e1;font-size:12px}
+  main{padding:16px 20px;display:grid;gap:14px}
+  main>*,.two>*{min-width:0}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:14px}
+  .card h2{margin:0 0 8px;font-size:14px}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  textarea{width:100%;min-height:110px;font:12px/1.4 Consolas,monospace;border:1px solid var(--line);border-radius:6px;padding:8px}
+  button{border:1px solid var(--line);background:#fff;border-radius:6px;padding:6px 12px;cursor:pointer;font:inherit}
+  button.p{background:var(--acc);border-color:var(--acc);color:#fff}
+  button.d{color:#b91c1c}
+  button:hover{filter:brightness(.95)}
+  input[type=text]{font:inherit;border:1px solid var(--line);border-radius:4px;padding:3px 5px}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:900px){.two{grid-template-columns:1fr}}
+  .hint{color:var(--mute);font-size:12px}
+  .grid-wrap{overflow:auto;max-height:60vh;border:1px solid var(--line);border-radius:6px}
+  table.g{border-collapse:collapse;width:100%;min-width:1100px}
+  table.g th{position:sticky;top:0;background:#eef1f5;z-index:1;font-weight:600;padding:5px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+  table.g td{padding:2px 3px;border-bottom:1px solid #eceef2}
+  table.g td input{width:100%;border:1px solid transparent;background:transparent;padding:3px 4px}
+  table.g td input:focus{border-color:var(--acc);background:#fff;outline:none}
+  table.g tr.need td{background:var(--warn)}
+  table.g tr.f5 td:nth-child(2) input{color:#0369a1;font-weight:700}
+  table.g .num{text-align:right}
+  .pill{display:inline-block;padding:1px 8px;border-radius:99px;font-size:12px;background:#e5e7eb}
+  .pill.w{background:#fed7aa}
+  .out{border:1px dashed var(--line);padding:10px;overflow:auto;background:#fff}
+  .msg{color:#047857;font-size:12px;min-height:16px}
+  .removed{color:#b91c1c;font-size:12px}
+</style>
+</head>
+<body>
+<header>
+  <h1>에어 컨펌 도우미</h1>
+  <p>요청 리스트 붙여넣기 → STOCK / CONFIRM 입력 → F1·F2 / F5 메일 본문 복사</p>
+</header>
+<main>
+
+<div class="two">
+  <section class="card">
+    <h2>① 리스트 붙여넣기 <span class="hint">(메일 표·엑셀 그대로 복사해서 붙여넣기)</span></h2>
+    <textarea id="src" placeholder="메일이나 엑셀에서 표를 헤더(FAC, Item cd, Maker...)째로 복사해서 붙여넣으세요.&#10;내 리스트 + 계장님 리스트를 차례로 '추가' 하면 합쳐집니다."></textarea>
+    <div class="row" style="margin-top:8px">
+      <button class="p" id="btnAdd">추가 / 합치기</button>
+      <label class="hint"><input type="checkbox" id="optOverwrite" checked> 같은 FAC+Item 은 새 값으로 덮어쓰기</label>
+      <button class="d" id="btnClear">전체 비우기</button>
+    </div>
+    <div class="msg" id="msgAdd"></div>
+  </section>
+
+  <section class="card">
+    <h2>② (선택) 이전 송부 리스트와 비교</h2>
+    <textarea id="prev" placeholder="이전에 태국으로 보낸 리스트를 붙여넣으면&#10;신규 → ADD, 수량 변경 → CHANGE Q'TY 를 REMARK에 자동 표시 (빨간 글씨)"></textarea>
+    <div class="row" style="margin-top:8px">
+      <button class="p" id="btnCompare">비교해서 REMARK 표시</button>
+      <button id="btnClearRemark">자동 REMARK 지우기</button>
+    </div>
+    <div class="msg" id="msgCmp"></div>
+    <div class="removed" id="removed"></div>
+  </section>
+</div>
+
+<section class="card">
+  <h2>③ 컨펌 입력
+    <span class="pill" id="cnt">0건</span>
+    <span class="pill w" id="cntNeed">미컨펌 0건</span>
+  </h2>
+  <div class="row" style="margin-bottom:8px">
+    <span class="hint">정렬</span>
+    <button data-sort="maker">Maker순</button>
+    <button data-sort="short">Short Del.순</button>
+    <button data-sort="fac">FAC순</button>
+    <span style="width:14px"></span>
+    <span class="hint">선택 행에 CONFIRM 일괄입력</span>
+    <input type="text" id="bulkVal" placeholder="예: 11/20 또는 remain checking" style="width:200px">
+    <button id="btnBulk">적용</button>
+    <button id="btnAddRow">+ 빈 행</button>
+    <button class="d" id="btnDelSel">선택 행 삭제</button>
+  </div>
+  <div class="hint" style="margin-bottom:6px">CONFIRM: <b>11/17</b> → 17-Nov, <b>45k 11/17</b> → 45K 17-Nov 자동 변환 · 주황색 행 = 재고 부족인데 CONFIRM 없음</div>
+  <div class="grid-wrap">
+    <table class="g">
+      <thead><tr>
+        <th><input type="checkbox" id="chkAll"></th><th>FAC</th><th>Item cd</th><th>Maker</th><th>Part Name</th>
+        <th>Purchase req</th><th>STOCK</th><th>CONFIRM</th><th>Short Del.</th><th>NEED ETD</th><th>REMARK</th><th></th>
+      </tr></thead>
+      <tbody id="tb"></tbody>
+    </table>
+  </div>
+</section>
+
+<div class="two">
+  <section class="card">
+    <h2>④ F1 · F2 메일 <span class="pill" id="cntA">0건</span></h2>
+    <textarea id="greetA" style="min-height:60px">Dear all,
+
+Please check below air shipment confirm list (F1, F2).</textarea>
+    <div class="row" style="margin:8px 0">
+      <button class="p" data-copy="A">메일 본문 복사 (Outlook 붙여넣기)</button>
+      <button data-tsv="A">엑셀용 복사</button>
+    </div>
+    <div class="out" id="outA"></div>
+  </section>
+  <section class="card">
+    <h2>⑤ F5 메일 <span class="pill" id="cntB">0건</span></h2>
+    <textarea id="greetB" style="min-height:60px">Dear all,
+
+Please check below air shipment confirm list (F5).</textarea>
+    <div class="row" style="margin:8px 0">
+      <button class="p" data-copy="B">메일 본문 복사 (Outlook 붙여넣기)</button>
+      <button data-tsv="B">엑셀용 복사</button>
+    </div>
+    <div class="out" id="outB"></div>
+  </section>
+</div>
+<div class="msg" id="msgCopy" style="padding:0 4px"></div>
+</main>
+
+<script>
+(function(){
+const MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const FIELDS=['fac','item','maker','part','req','stock','confirm','shortDel','needEtd','remark'];
+const KEY='airConfirm.v1';
+let rows=[];   // {id,fac,item,maker,part,req,stock,confirm,shortDel,needEtd,remark,auto:{add,chg},sel}
+let seq=1;
+const $=s=>document.querySelector(s);
+
+/* ---------- persistence ---------- */
+function save(){try{localStorage.setItem(KEY,JSON.stringify({rows,seq,ga:$('#greetA').value,gb:$('#greetB').value}))}catch(e){}}
+function load(){try{const d=JSON.parse(localStorage.getItem(KEY)||'null');if(d){rows=d.rows||[];seq=d.seq||1;if(d.ga)$('#greetA').value=d.ga;if(d.gb)$('#greetB').value=d.gb}}catch(e){}}
+
+/* ---------- helpers ---------- */
+const num=v=>{const n=parseFloat(String(v||'').replace(/[, ]/g,''));return isNaN(n)?null:n};
+const fmtNum=v=>{const n=num(v);return n===null?(v||''):n.toLocaleString('en-US')};
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const yr=()=>new Date().getFullYear();
+function dmy(d,m,y){return `${d}-${MON[m]}-${String(y).slice(-2)}`}
+function normDate(v){
+  v=String(v||'').trim(); if(!v) return '';
+  let m;
+  if(/^\d{5}$/.test(v)){const d=new Date(Date.UTC(1899,11,30)+(+v)*864e5);return dmy(d.getUTCDate(),d.getUTCMonth(),d.getUTCFullYear())}
+  if(m=v.match(/^(\d{4})[-./](\d{1,2})[-./](\d{1,2})$/)) return dmy(+m[3],m[2]-1,m[1]);
+  if(m=v.match(/^(\d{1,2})[/.](\d{1,2})$/)) return dmy(+m[2],m[1]-1,yr());
+  if(m=v.match(/^(\d{1,2})[- ]([A-Za-z]{3})[a-z]*[- ]?(\d{2,4})?$/)){const mi=MON.findIndex(x=>x.toLowerCase()===m[2].toLowerCase());if(mi>=0)return dmy(+m[1],mi,m[3]||yr())}
+  return v;
+}
+function isDate(v){return /^\d{1,2}-[A-Z][a-z]{2}-\d{2}$/.test(v)}
+function dateVal(v){const m=String(v).match(/^(\d{1,2})-([A-Z][a-z]{2})-(\d{2})$/);if(!m)return 9e15;return Date.UTC(2000+ +m[3],MON.indexOf(m[2]),+m[1])}
+function normConfirm(v){
+  v=String(v||'').trim(); let m;
+  if(m=v.match(/^(\d{1,2})[/.](\d{1,2})$/)) return `${+m[2]}-${MON[m[1]-1]}`;
+  if(m=v.match(/^([\d.,]+\s*[kK]?)\s+(\d{1,2})[/.](\d{1,2})$/)) return `${m[1].replace(/\s/g,'').toUpperCase()} ${+m[3]}-${MON[m[2]-1]}`;
+  return v;
+}
+function needsConfirm(r){const q=num(r.req),s=num(r.stock)||0;return q!==null && s<q && !String(r.confirm||'').trim()}
+
+/* ---------- parsing ---------- */
+const HEAD={fac:/^fac/,item:/^item/,maker:/^maker|^vendor|^supplier/,part:/^part/,req:/purchase|request|req|q'?ty|qty/,
+  stock:/^stock/,confirm:/^confirm/,shortDel:/short/,needEtd:/need|etd/,remark:/remark|비고/};
+function cellsFromPaste(text,html){
+  if(html && /<table/i.test(html)){
+    const doc=new DOMParser().parseFromString(html,'text/html');
+    const out=[];doc.querySelectorAll('tr').forEach(tr=>{out.push([...tr.children].map(td=>td.textContent.replace(/\s+/g,' ').trim()))});
+    if(out.length) return out;
+  }
+  return String(text||'').split(/\r?\n/).map(l=>l.split('\t').map(c=>c.trim()));
+}
+function parse(lines){
+  let map=null,res=[];
+  for(const c of lines){
+    if(c.filter(x=>x).length<2) continue;
+    const low=c.map(x=>x.toLowerCase());
+    if(!map && low.some(x=>/^item/.test(x)) && low.some(x=>/^maker|^part/.test(x))){
+      map={};low.forEach((h,i)=>{for(const f of FIELDS){if(map[f]===undefined && HEAD[f].test(h)){map[f]=i;break}}});
+      continue;
+    }
+    const m=map||{fac:0,item:1,maker:2,part:3,req:4,stock:5,confirm:6,shortDel:7,needEtd:8,remark:9};
+    if(map && low.some(x=>/^item/.test(x))) continue; // repeated header
+    const r={};FIELDS.forEach(f=>r[f]=m[f]!==undefined?(c[m[f]]||''):'');
+    if(!r.item && !r.part) continue;
+    if(!/^F\d/i.test(r.fac) && !map) continue;
+    r.fac=r.fac.toUpperCase();r.shortDel=normDate(r.shortDel);r.needEtd=normDate(r.needEtd)||'URGENT';
+    r.req=fmtNum(r.req);r.stock=fmtNum(r.stock);
+    res.push(r);
+  }
+  return res;
+}
+const keyOf=r=>(r.fac+'|'+r.item).toUpperCase();
+
+/* ---------- grid ---------- */
+function render(){
+  const tb=$('#tb');tb.innerHTML='';
+  rows.forEach(r=>{
+    const tr=document.createElement('tr');
+    if(needsConfirm(r)) tr.className='need';
+    if(r.fac==='F5') tr.classList.add('f5');
+    tr.innerHTML=`<td><input type="checkbox" ${r.sel?'checked':''} data-k="sel"></td>`+
+      FIELDS.map(f=>`<td><input type="text" data-k="${f}" value="${esc(r[f])}" class="${['req','stock'].includes(f)?'num':''}" style="${f==='part'?'min-width:220px':f==='fac'?'width:42px':''}"></td>`).join('')+
+      `<td><button class="d" data-del title="삭제">✕</button></td>`;
+    tr.dataset.id=r.id;tb.appendChild(tr);
+  });
+  stats();renderOut();save();
+}
+function stats(){
+  $('#cnt').textContent=rows.length+'건';
+  $('#cntNeed').textContent='미컨펌 '+rows.filter(needsConfirm).length+'건';
+}
+$('#tb').addEventListener('change',e=>{
+  const tr=e.target.closest('tr');const r=rows.find(x=>x.id==tr.dataset.id);const k=e.target.dataset.k;if(!r||!k)return;
+  if(k==='sel'){r.sel=e.target.checked;save();return}
+  let v=e.target.value;
+  if(k==='confirm')v=normConfirm(v);
+  if(k==='shortDel'||k==='needEtd')v=normDate(v);
+  if(k==='req'||k==='stock')v=fmtNum(v);
+  if(k==='fac')v=v.toUpperCase().trim();
+  if(k==='remark'){r.auto={}}
+  r[k]=v;e.target.value=v;
+  tr.classList.toggle('need',needsConfirm(r));tr.classList.toggle('f5',r.fac==='F5');
+  stats();renderOut();save();
+});
+$('#tb').addEventListener('click',e=>{
+  if(!e.target.hasAttribute('data-del'))return;
+  const id=e.target.closest('tr').dataset.id;rows=rows.filter(x=>x.id!=id);render();
+});
+$('#chkAll').onchange=e=>{rows.forEach(r=>r.sel=e.target.checked);render()};
+
+/* ---------- paste capture (keeps HTML table structure) ---------- */
+function hookPaste(el){
+  el.addEventListener('paste',e=>{
+    const html=e.clipboardData.getData('text/html');
+    if(html && /<table/i.test(html)){
+      e.preventDefault();
+      const lines=cellsFromPaste('',html);
+      el.value=lines.map(c=>c.join('\t')).join('\n');
+    }
+  });
+}
+hookPaste($('#src'));hookPaste($('#prev'));
+
+/* ---------- actions ---------- */
+$('#btnAdd').onclick=()=>{
+  const got=parse(cellsFromPaste($('#src').value));
+  if(!got.length){$('#msgAdd').textContent='인식된 행이 없습니다. 헤더(FAC, Item cd, Maker...)까지 같이 복사해 주세요.';return}
+  let add=0,upd=0;const ow=$('#optOverwrite').checked;
+  got.forEach(n=>{
+    const ex=rows.find(r=>keyOf(r)===keyOf(n));
+    if(ex){if(ow){FIELDS.forEach(f=>{if(n[f])ex[f]=n[f]});upd++}}
+    else{rows.push({id:seq++,...n,auto:{}});add++}
+  });
+  $('#msgAdd').textContent=`추가 ${add}건, 갱신 ${upd}건 (총 ${rows.length}건)`;
+  $('#src').value='';render();
+};
+$('#btnClear').onclick=()=>{if(confirm('입력한 리스트를 모두 지울까요?')){rows=[];render()}};
+$('#btnCompare').onclick=()=>{
+  const prev=parse(cellsFromPaste($('#prev').value));
+  if(!prev.length){$('#msgCmp').textContent='이전 리스트를 인식하지 못했습니다.';return}
+  const pm=new Map(prev.map(p=>[keyOf(p),p]));let a=0,c=0;
+  rows.forEach(r=>{
+    const p=pm.get(keyOf(r));
+    const auto=r.auto||{};
+    if(auto.add||auto.chg) r.remark='';
+    r.auto={};
+    if(!p){r.auto.add=true;r.remark=r.remark||'ADD';a++}
+    else if(num(p.req)!==num(r.req)){r.auto.chg=true;r.remark=r.remark||"CHANGE Q'TY";c++}
+  });
+  const cur=new Set(rows.map(keyOf));
+  const gone=prev.filter(p=>!cur.has(keyOf(p)));
+  $('#msgCmp').textContent=`ADD ${a}건, CHANGE Q'TY ${c}건 표시`;
+  $('#removed').innerHTML=gone.length?('이전 리스트엔 있고 지금은 빠진 품목: '+gone.map(g=>`${esc(g.fac)} ${esc(g.item)} ${esc(g.part)}`).join(', ')):'';
+  render();
+};
+$('#btnClearRemark').onclick=()=>{rows.forEach(r=>{if(r.auto&&(r.auto.add||r.auto.chg))r.remark='';r.auto={}});$('#removed').innerHTML='';render()};
+$('#btnBulk').onclick=()=>{const v=normConfirm($('#bulkVal').value);let n=0;rows.forEach(r=>{if(r.sel){r.confirm=v;n++}});if(!n)alert('왼쪽 체크박스로 행을 선택하세요.');render()};
+$('#btnAddRow').onclick=()=>{rows.push({id:seq++,fac:'F2',item:'',maker:'',part:'',req:'',stock:'',confirm:'',shortDel:'',needEtd:'URGENT',remark:'',auto:{}});render()};
+$('#btnDelSel').onclick=()=>{const n=rows.filter(r=>r.sel).length;if(n&&confirm(n+'개 행을 삭제할까요?')){rows=rows.filter(r=>!r.sel);render()}};
+document.querySelectorAll('[data-sort]').forEach(b=>b.onclick=()=>{
+  const s=b.dataset.sort;
+  const cmp={maker:(a,b)=>a.maker.localeCompare(b.maker)||a.item.localeCompare(b.item),
+    short:(a,b)=>dateVal(a.shortDel)-dateVal(b.shortDel)||a.maker.localeCompare(b.maker),
+    fac:(a,b)=>a.fac.localeCompare(b.fac)||a.maker.localeCompare(b.maker)||a.item.localeCompare(b.item)}[s];
+  rows.sort(cmp);render();
+});
+['#greetA','#greetB'].forEach(s=>$(s).addEventListener('input',()=>{renderOut();save()}));
+
+/* ---------- output (Outlook-friendly inline styles) ---------- */
+const B='border:1px solid #000;padding:2px 5px;font-family:Calibri,\'Malgun Gothic\',sans-serif;font-size:10pt;white-space:nowrap;';
+function buildTable(list){
+  const th=(t,bg)=>`<th style="${B}background:${bg||'#fff'};font-weight:bold;text-align:${t==='Part Name'?'left':'center'}">${t}</th>`;
+  let h=`<table cellspacing="0" cellpadding="0" style="border-collapse:collapse;border:1px solid #000">`+
+    `<tr>${th('FAC')}${th('Item cd')}${th('Maker')}${th('Part Name')}${th('Purchase request')}${th('STOCK','#FFFF00')}${th('CONFIRM','#FFC000')}${th('Short Del.')}${th('NEED ETD')}${th('REMARK','#D9D9D9')}</tr>`;
+  list.forEach(r=>{
+    const add=r.auto&&r.auto.add, chg=r.auto&&r.auto.chg;
+    const red=add?'color:#FF0000;':'';
+    const facBg=r.fac==='F5'?'#00B0F0':(r.fac==='F1'?'#FFFFFF':'#FFFF00');
+    const conf=String(r.confirm||'');
+    const confBg=/not confirm|lt\s*\d/i.test(conf)?'#FFC000':'#F2F2F2';
+    const etdUrg=!isDate(r.needEtd);
+    h+=`<tr>`+
+      `<td style="${B}background:${facBg};text-align:center">${esc(r.fac)}</td>`+
+      `<td style="${B}">${esc(r.item)}</td>`+
+      `<td style="${B}background:#FFFF00">${esc(r.maker)}</td>`+
+      `<td style="${B}font-weight:bold;${red}">${esc(r.part)}</td>`+
+      `<td style="${B}text-align:right;${(add||chg)?'color:#FF0000;font-weight:bold;':''}">${esc(r.req)}</td>`+
+      `<td style="${B}text-align:right;background:#F2F2F2">${esc(r.stock)}</td>`+
+      `<td style="${B}text-align:right;background:${confBg}">${esc(conf)}</td>`+
+      `<td style="${B}text-align:right">${esc(r.shortDel)}</td>`+
+      (etdUrg?`<td style="${B}text-align:center;background:#FFFF00;color:#FF0000;font-weight:bold">${esc(r.needEtd||'URGENT')}</td>`
+             :`<td style="${B}text-align:center;background:#9BE5F5;color:#0070C0;font-weight:bold">${esc(r.needEtd)}</td>`)+
+      `<td style="${B}color:#FF0000;font-weight:bold">${esc(r.remark)}</td></tr>`;
+  });
+  return h+'</table>';
+}
+const outSort=(a,b)=>a.fac.localeCompare(b.fac)||a.maker.localeCompare(b.maker)||a.part.localeCompare(b.part);
+const groupA=()=>rows.filter(r=>r.fac!=='F5').sort(outSort);
+const groupB=()=>rows.filter(r=>r.fac==='F5').sort(outSort);
+function mailHtml(g){
+  const list=g==='A'?groupA():groupB();
+  const greet=esc($(g==='A'?'#greetA':'#greetB').value).replace(/\n/g,'<br>');
+  return `<div style="font-family:'Malgun Gothic',Calibri,sans-serif;font-size:10pt">${greet}<br><br>${buildTable(list)}<br>Thanks.</div>`;
+}
+function renderOut(){
+  $('#outA').innerHTML=groupA().length?mailHtml('A'):'<span class="hint">F1·F2 품목 없음</span>';
+  $('#outB').innerHTML=groupB().length?mailHtml('B'):'<span class="hint">F5 품목 없음</span>';
+  $('#cntA').textContent=groupA().length+'건';$('#cntB').textContent=groupB().length+'건';
+}
+function flash(t){$('#msgCopy').textContent=t;setTimeout(()=>$('#msgCopy').textContent='',2500)}
+function copyRendered(el){
+  const sel=window.getSelection();const rg=document.createRange();rg.selectNodeContents(el);sel.removeAllRanges();sel.addRange(rg);
+  const ok=document.execCommand('copy');sel.removeAllRanges();return ok;
+}
+document.querySelectorAll('[data-copy]').forEach(b=>b.onclick=async()=>{
+  const g=b.dataset.copy;const el=$(g==='A'?'#outA':'#outB');
+  const unconf=(g==='A'?groupA():groupB()).filter(needsConfirm).length;
+  if(unconf && !confirm(`재고 부족인데 CONFIRM 이 빈 품목이 ${unconf}건 있습니다. 그래도 복사할까요?`))return;
+  const html=mailHtml(g);
+  try{await navigator.clipboard.write([new ClipboardItem({'text/html':new Blob([html],{type:'text/html'}),'text/plain':new Blob([el.innerText],{type:'text/plain'})})]);flash('복사됨 — Outlook 메일 본문에 Ctrl+V')}
+  catch(e){flash(copyRendered(el)?'복사됨 — Outlook 메일 본문에 Ctrl+V':'복사 실패: 아래 미리보기를 직접 드래그해서 복사하세요')}
+});
+document.querySelectorAll('[data-tsv]').forEach(b=>b.onclick=async()=>{
+  const list=b.dataset.tsv==='A'?groupA():groupB();
+  const t=['FAC\tItem cd\tMaker\tPart Name\tPurchase request\tSTOCK\tCONFIRM\tShort Del.\tNEED ETD\tREMARK',
+    ...list.map(r=>FIELDS.map(f=>r[f]||'').join('\t'))].join('\n');
+  try{await navigator.clipboard.writeText(t);flash('엑셀용 복사됨')}
+  catch(e){const ta=document.createElement('textarea');ta.value=t;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();flash('엑셀용 복사됨')}
+});
+
+load();render();
+})();
+</script>
+</body>
+</html>
