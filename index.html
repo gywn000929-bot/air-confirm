@@ -93,8 +93,9 @@
     <button class="d" id="btnDelSel">선택 행 삭제</button>
     <span style="width:14px"></span>
     <button class="p" id="btnXlsx" title="메일 표와 같은 색·글씨로 F1,2 / F5 시트 엑셀을 내려받습니다">📊 엑셀 다운로드 (F1,2 / F5)</button>
+    <button id="btnXlsxNeed" title="재고가 모자란데 CONFIRM이 비어 있는 품목(주황색 행)만 같은 모양의 엑셀로 내려받습니다">📊 미컨펌만 엑셀 다운로드</button>
   </div>
-  <div class="hint" style="margin-bottom:6px">CONFIRM: <b>11/17</b> → 17-Nov, <b>45k 11/17</b> → 45K 17-Nov 자동 변환 · 주황색 행 = 재고 부족인데 CONFIRM 없음</div>
+  <div class="hint" style="margin-bottom:6px">CONFIRM: <b>11/17</b> → 17-Nov, <b>45k 11/17</b> → 45K 17-Nov 자동 변환 · 주황색 행 = 재고 부족인데 CONFIRM 없음(미컨펌) · <b>미컨펌만 엑셀 다운로드</b>는 이 주황색 행만 받습니다</div>
   <div class="grid-wrap">
     <table class="g">
       <thead><tr>
@@ -398,6 +399,17 @@ function xlsxSheet(list){
   ws['!freeze']={xSplit:0,ySplit:1};
   return ws;
 }
+/* 미컨펌(재고 부족인데 CONFIRM이 빈 행 = 주황색 행)만 같은 모양으로 내려받기 */
+$('#btnXlsxNeed').onclick=()=>{
+  const a=groupA().filter(needsConfirm), b=groupB().filter(needsConfirm);
+  if(!a.length && !b.length){alert('미컨펌 품목이 없습니다. (재고가 모자란데 CONFIRM이 비어 있는 행이 없음)');return}
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,xlsxSheet(a),'F1,2');
+  XLSX.utils.book_append_sheet(wb,xlsxSheet(b),'F5');
+  const d=new Date();const name=`에어미컨펌_${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}.xlsx`;
+  XLSX.writeFile(wb,name);
+  flash(`미컨펌만 엑셀 다운로드됨 (F1,2: ${a.length}건 / F5: ${b.length}건)`);
+};
 $('#btnXlsx').onclick=()=>{
   if(!rows.length){alert('리스트가 비어 있습니다.');return}
   const wb=XLSX.utils.book_new();
