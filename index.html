@@ -67,8 +67,10 @@
 <div class="two">
   <section class="card" id="dropFile">
     <h2>① 리스트 넣기 <span class="hint">(엑셀 파일을 이 칸에 끌어다 놓거나, 표를 복사해서 붙여넣기)</span></h2>
-    <textarea id="src" placeholder="① 먼저 전체 리스트(반장님 리스트 등)를 헤더(FAC, Item cd, Maker...)째로 넣고 '추가'&#10;② 이어서 내가 컨펌한 리스트를 넣고 '추가' → 같은 품목은 내 값으로 채워지고,&#10;   나머지(아직 컨펌 안 된 품목)는 주황색으로 남아 아래 표에서 바로 STOCK·CONFIRM을 적을 수 있습니다."></textarea>
+    <textarea id="src" placeholder="전체 리스트(반장님 리스트 등)와 내 컨펌 내역을 헤더(FAC, Item cd, Maker...)째로 차례로 넣고 '추가'&#10;→ 리스트에는 있는데 컨펌 내역에 없는 품목이 미컨펌(주황색)으로 남습니다.&#10;   미컨펌 행은 아래 표에서 바로 STOCK·CONFIRM을 적을 수 있습니다. 넣는 순서는 상관없습니다."></textarea>
     <div class="row" style="margin-top:8px">
+      <select id="listKind" title="자동: CONFIRM 칸에 값이 있으면 컨펌 내역, 없으면 전체 리스트로 넣습니다">
+        <option value="auto">자동으로 구분</option><option value="all">전체 리스트로 넣기</option><option value="conf">컨펌 내역으로 넣기</option></select>
       <button class="p" id="btnAdd">추가 / 합치기</button>
       <button id="btnFile" title="반장님 리스트나 에어 리포트 엑셀 파일을 그대로 넣습니다">📂 엑셀 파일 넣기</button>
       <input type="file" id="fileIn" accept=".xlsx,.xls" hidden>
@@ -112,9 +114,9 @@
     <span style="width:14px"></span>
     <button class="p" id="btnXlsx" title="메일 표와 같은 색·글씨로 F1,2 / F5 시트 엑셀을 내려받습니다">📊 엑셀 다운로드 (F1,2 / F5)</button>
     <label class="hint" style="margin-left:6px"><input type="checkbox" id="onlyNeed"> 미컨펌 행만 보기</label>
-    <button id="btnXlsxNeed" title="재고가 모자란데 CONFIRM이 비어 있는 품목(주황색 행)만 같은 모양의 엑셀로 내려받습니다">📊 미컨펌만 엑셀 다운로드</button>
+    <button id="btnXlsxNeed" title="리스트에는 있는데 컨펌 내역에 없는 품목(주황색 행)만 같은 모양의 엑셀로 내려받습니다">📊 미컨펌만 엑셀 다운로드</button>
   </div>
-  <div class="hint" style="margin-bottom:6px">CONFIRM: <b>11/17</b> → 17-Nov, <b>45k 11/17</b> → 45K 17-Nov 자동 변환 · 주황색 행 = 재고 부족인데 CONFIRM 없음(미컨펌) · 표의 모든 칸은 눌러서 바로 고칠 수 있습니다 · <b>미컨펌만 엑셀 다운로드</b>는 이 주황색 행만 받습니다</div>
+  <div class="hint" style="margin-bottom:6px">CONFIRM: <b>11/17</b> → 17-Nov, <b>45k 11/17</b> → 45K 17-Nov 자동 변환 · 주황색 행 = 미컨펌 (리스트에는 있는데 컨펌 내역에 없는 품목) · 표의 모든 칸은 눌러서 바로 고칠 수 있습니다 · <b>미컨펌만 엑셀 다운로드</b>는 이 주황색 행만 받습니다</div>
   <div class="grid-wrap">
     <table class="g">
       <thead><tr>
@@ -193,7 +195,13 @@ function normConfirm(v){
   if(m=v.match(/^([\d.,]+\s*[kK]?)\s+(\d{1,2})[/.](\d{1,2})$/)) return `${m[1].replace(/\s/g,'').toUpperCase()} ${+m[3]}-${MON[m[2]-1]}`;
   return v;
 }
-function needsConfirm(r){const q=num(r.req),s=num(r.stock)||0;return q!==null && s<q && !String(r.confirm||'').trim()}
+/* 미컨펌 = 리스트에는 있는데 컨펌 내역에 없는 품목.
+   r.conf: 컨펌 내역으로 들어온 행이거나, 표에서 STOCK·CONFIRM을 직접 적은 행이면 true.
+   (예전에 저장된 행처럼 표시가 없으면 STOCK이나 CONFIRM이 적혀 있는지로 판단) */
+const hasVal=r=>!!(String(r.confirm||'').trim()||String(r.stock||'').trim());
+function needsConfirm(r){return r.conf===undefined?!hasVal(r):!r.conf}
+/* 재고가 모자란데 CONFIRM이 빈 행 (메일 복사 전 확인용) */
+function shortNoConfirm(r){const q=num(r.req),s=num(r.stock)||0;return q!==null && s<q && !String(r.confirm||'').trim()}
 
 /* ---------- parsing ---------- */
 const HEAD={fac:/^fac/,item:/^item/,maker:/^maker|^vendor|^supplier/,part:/^part/,req:/purchase|request|remain|req|q'?ty|qty/,
@@ -225,6 +233,7 @@ function parse(lines){
     r.req=fmtNum(r.req);r.stock=fmtNum(r.stock);
     res.push(r);
   }
+  res.hasConfirm=!!(map&&map.confirm!==undefined)&&res.some(r=>String(r.confirm||'').trim());   // CONFIRM 칸에 값이 있는 표 = 컨펌 내역
   return res;
 }
 const keyOf=r=>(r.fac+'|'+r.item).toUpperCase();
@@ -263,6 +272,7 @@ $('#tb').addEventListener('change',e=>{
   if(k==='fac')v=v.toUpperCase().trim();
   if(k==='remark'){r.auto={}}
   r[k]=v;e.target.value=v;
+  if(k==='confirm'||k==='stock')r.conf=hasVal(r);   // 표에서 직접 적으면 컨펌된 것으로, 둘 다 지우면 다시 미컨펌
   tr.classList.toggle('need',needsConfirm(r));tr.classList.toggle('f5',r.fac==='F5');   // 방금 채운 행은 다음에 다시 그릴 때 숨겨진다(입력 중에는 그대로 둠)
   stats();renderOut();save();
 });
@@ -291,13 +301,16 @@ hookPaste($('#src'));hookPaste($('#prev'));
 function addLines(lines,label){
   const got=parse(lines);
   if(!got.length){$('#msgAdd').textContent='인식된 행이 없습니다. 헤더(FAC, Item cd, Maker...)까지 같이 넣어 주세요.';return false}
+  const sel=$('#listKind').value, isConf=sel==='conf'||(sel==='auto'&&got.hasConfirm);   // 컨펌 내역인지, 전체 리스트인지
   let add=0,upd=0;const ow=$('#optOverwrite').checked;
   got.forEach(n=>{
     const ex=rows.find(r=>keyOf(r)===keyOf(n));
-    if(ex){if(ow){FIELDS.forEach(f=>{if(n[f])ex[f]=n[f]});upd++}}
-    else{rows.push({id:seq++,...n,auto:{}});add++}
+    if(ex){if(ex.conf===undefined)ex.conf=hasVal(ex);if(ow){FIELDS.forEach(f=>{if(n[f])ex[f]=n[f]});upd++}if(isConf)ex.conf=true}
+    else{rows.push({id:seq++,...n,auto:{},conf:isConf});add++}
   });
-  $('#msgAdd').textContent=`${label?label+': ':''}추가 ${add}건, 갱신 ${upd}건 (총 ${rows.length}건)`;
+  const need=rows.filter(needsConfirm).length;
+  $('#msgAdd').textContent=`${label?label+': ':''}${isConf?'컨펌 내역으로':'전체 리스트로'} 넣음 · 추가 ${add}건, 갱신 ${upd}건 (총 ${rows.length}건, 미컨펌 ${need}건)`;
+  $('#listKind').value='auto';
   render();return true;
 }
 $('#btnAdd').onclick=()=>{if(addLines(cellsFromPaste($('#src').value)))$('#src').value=''};
@@ -406,7 +419,7 @@ function copyRendered(el){
 }
 document.querySelectorAll('[data-copy]').forEach(b=>b.onclick=async()=>{
   const g=b.dataset.copy;const el=$(g==='A'?'#outA':'#outB');
-  const unconf=(g==='A'?groupA():groupB()).filter(needsConfirm).length;
+  const unconf=(g==='A'?groupA():groupB()).filter(shortNoConfirm).length;
   if(unconf && !confirm(`재고 부족인데 CONFIRM 이 빈 품목이 ${unconf}건 있습니다. 그래도 복사할까요?`))return;
   const html=mailHtml(g);
   try{await navigator.clipboard.write([new ClipboardItem({'text/html':new Blob([html],{type:'text/html'}),'text/plain':new Blob([el.innerText],{type:'text/plain'})})]);flash('복사됨 — Outlook 메일 본문에 Ctrl+V')}
@@ -460,7 +473,7 @@ function xlsxSheet(list){
 /* 미컨펌(재고 부족인데 CONFIRM이 빈 행 = 주황색 행)만 같은 모양으로 내려받기 */
 $('#btnXlsxNeed').onclick=()=>{
   const a=groupA().filter(needsConfirm), b=groupB().filter(needsConfirm);
-  if(!a.length && !b.length){alert('미컨펌 품목이 없습니다. (재고가 모자란데 CONFIRM이 비어 있는 행이 없음)');return}
+  if(!a.length && !b.length){alert('미컨펌 품목이 없습니다. (리스트에 있는 품목이 모두 컨펌 내역에 있음)');return}
   const wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,xlsxSheet(a),'F1,2');
   XLSX.utils.book_append_sheet(wb,xlsxSheet(b),'F5');
