@@ -67,7 +67,7 @@
 <div class="two">
   <section class="card" id="dropFile">
     <h2>① 리스트 넣기 <span class="hint">(엑셀 파일을 이 칸에 끌어다 놓거나, 표를 복사해서 붙여넣기)</span></h2>
-    <textarea id="src" placeholder="메일이나 엑셀에서 표를 헤더(FAC, Item cd, Maker...)째로 복사해서 붙여넣으세요.&#10;내 리스트 + 계장님 리스트를 차례로 '추가' 하면 합쳐집니다."></textarea>
+    <textarea id="src" placeholder="① 먼저 전체 리스트(반장님 리스트 등)를 헤더(FAC, Item cd, Maker...)째로 넣고 '추가'&#10;② 이어서 내가 컨펌한 리스트를 넣고 '추가' → 같은 품목은 내 값으로 채워지고,&#10;   나머지(아직 컨펌 안 된 품목)는 주황색으로 남아 아래 표에서 바로 STOCK·CONFIRM을 적을 수 있습니다."></textarea>
     <div class="row" style="margin-top:8px">
       <button class="p" id="btnAdd">추가 / 합치기</button>
       <button id="btnFile" title="반장님 리스트나 에어 리포트 엑셀 파일을 그대로 넣습니다">📂 엑셀 파일 넣기</button>
@@ -96,7 +96,7 @@
     <span class="pill" id="cnt">0건</span>
     <span class="pill w" id="cntNeed">미컨펌 0건</span>
   </h2>
-  <div class="hint" style="margin-bottom:4px">Maker를 누르면 그 업체 행이 모두 선택됩니다 → 오른쪽 "CONFIRM 일괄입력"으로 한 번에 넣기 (주황 숫자 = 아직 컨펌 안 된 행)</div>
+  <div class="hint" style="margin-bottom:4px">Maker를 누르면 그 업체 행이 모두 선택됩니다 → 오른쪽 "CONFIRM 일괄입력"으로 한 번에 넣기 (주황 숫자 = 미컨펌 행 수)</div>
   <div class="chips" id="chips"></div>
   <div class="row" style="margin-bottom:8px">
     <span class="hint">정렬</span>
@@ -245,7 +245,7 @@ function render(){
   stats();renderOut();save();
 }
 function chips(){
-  const m=new Map();rows.forEach(r=>{const k=r.maker||'(Maker 없음)';const c=m.get(k)||{n:0,need:0,sel:0};c.n++;if(!String(r.confirm||'').trim())c.need++;if(r.sel)c.sel++;m.set(k,c)});
+  const m=new Map();rows.forEach(r=>{const k=r.maker||'(Maker 없음)';const c=m.get(k)||{n:0,need:0,sel:0};c.n++;if(needsConfirm(r))c.need++;if(r.sel)c.sel++;m.set(k,c)});
   $('#chips').innerHTML=[...m.entries()].sort((a,b)=>a[0].localeCompare(b[0])).map(([k,c])=>`<button data-maker="${esc(k)}" class="${c.sel===c.n?'on':''}">${esc(k)} ${c.n}${c.need?` <span class="n">${c.need}</span>`:''}</button>`).join('');
 }
 function stats(){
