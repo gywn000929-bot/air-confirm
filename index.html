@@ -41,6 +41,15 @@
   .out{border:1px dashed var(--line);padding:10px;overflow:auto;background:#fff}
   .msg{color:#047857;font-size:12px;min-height:16px}
   .removed{color:#b91c1c;font-size:12px}
+  .tabs{display:flex;gap:8px;padding:12px 20px 0}
+  .tabs button{border:1px solid var(--line);background:#fff;border-radius:8px 8px 0 0;padding:9px 18px;font-size:14px;font-weight:700;color:var(--mute)}
+  .tabs button small{display:block;font-weight:400;font-size:12px}
+  .tabs button.on{background:var(--acc);border-color:var(--acc);color:#fff}
+  .chips{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 8px}
+  .chips button{padding:3px 10px;font-size:12px;border-radius:99px}
+  .chips button.on{background:#dbeafe;border-color:var(--acc);color:#1d4ed8;font-weight:700}
+  .chips button .n{color:#b45309;font-weight:700}
+  #dropFile.over{outline:2px dashed var(--acc);background:#eff6ff}
 </style>
 </head>
 <body>
@@ -49,14 +58,21 @@
   <p>요청 리스트 붙여넣기 → STOCK / CONFIRM 입력 → F1·F2 / F5 메일 본문 복사</p>
   <p>한 주 순서: <b>금요일</b> 이 화면에서 컨펌 → 주간 엑셀의 Air up 시트 정리 → <b>월요일</b> <a href="https://gywn000929-bot.github.io/shipment_mailer-/?who=kim" style="color:#93c5fd">메일 작성기</a>에서 출하 요청 메일 · KET 긴급 자재 메일</p>
 </header>
+<div class="tabs">
+  <button data-mode="wed">수요일 컨펌<small>반장님 리스트 (월요일 에어 요청분)</small></button>
+  <button data-mode="fri">금요일 컨펌<small>에어 리포트</small></button>
+</div>
 <main>
 
 <div class="two">
-  <section class="card">
-    <h2>① 리스트 붙여넣기 <span class="hint">(메일 표·엑셀 그대로 복사해서 붙여넣기)</span></h2>
+  <section class="card" id="dropFile">
+    <h2>① 리스트 넣기 <span class="hint">(엑셀 파일을 이 칸에 끌어다 놓거나, 표를 복사해서 붙여넣기)</span></h2>
     <textarea id="src" placeholder="메일이나 엑셀에서 표를 헤더(FAC, Item cd, Maker...)째로 복사해서 붙여넣으세요.&#10;내 리스트 + 계장님 리스트를 차례로 '추가' 하면 합쳐집니다."></textarea>
     <div class="row" style="margin-top:8px">
       <button class="p" id="btnAdd">추가 / 합치기</button>
+      <button id="btnFile" title="반장님 리스트나 에어 리포트 엑셀 파일을 그대로 넣습니다">📂 엑셀 파일 넣기</button>
+      <input type="file" id="fileIn" accept=".xlsx,.xls" hidden>
+      <select id="sheetSel" style="display:none"></select><button id="btnSheet" style="display:none">이 시트 넣기</button>
       <label class="hint"><input type="checkbox" id="optOverwrite" checked> 같은 FAC+Item 은 새 값으로 덮어쓰기</label>
       <button class="d" id="btnClear">전체 비우기</button>
     </div>
@@ -80,6 +96,8 @@
     <span class="pill" id="cnt">0건</span>
     <span class="pill w" id="cntNeed">미컨펌 0건</span>
   </h2>
+  <div class="hint" style="margin-bottom:4px">Maker를 누르면 그 업체 행이 모두 선택됩니다 → 오른쪽 "CONFIRM 일괄입력"으로 한 번에 넣기 (주황 숫자 = 아직 컨펌 안 된 행)</div>
+  <div class="chips" id="chips"></div>
   <div class="row" style="margin-bottom:8px">
     <span class="hint">정렬</span>
     <button data-sort="maker">Maker순</button>
@@ -138,14 +156,18 @@ Please check below air shipment confirm list (F5).</textarea>
 (function(){
 const MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const FIELDS=['fac','item','maker','part','req','stock','confirm','shortDel','needEtd','remark'];
-const KEY='airConfirm.v1';
+const KEYS={wed:'airConfirm.wed.v1',fri:'airConfirm.v1'};   // 수요일(반장님 리스트) / 금요일(에어 리포트) 리스트를 따로 기억
+let mode=(()=>{try{const m=localStorage.getItem('airConfirm.mode');if(m==='wed'||m==='fri')return m}catch(e){}const d=new Date().getDay();return d>=1&&d<=3?'wed':'fri'})();
 let rows=[];   // {id,fac,item,maker,part,req,stock,confirm,shortDel,needEtd,remark,auto:{add,chg},sel}
 let seq=1;
 const $=s=>document.querySelector(s);
 
 /* ---------- persistence ---------- */
-function save(){try{localStorage.setItem(KEY,JSON.stringify({rows,seq,ga:$('#greetA').value,gb:$('#greetB').value}))}catch(e){}}
-function load(){try{const d=JSON.parse(localStorage.getItem(KEY)||'null');if(d){rows=d.rows||[];seq=d.seq||1;if(d.ga)$('#greetA').value=d.ga;if(d.gb)$('#greetB').value=d.gb}}catch(e){}}
+const G0={a:document.querySelector('#greetA').value,b:document.querySelector('#greetB').value};
+function save(){try{localStorage.setItem(KEYS[mode],JSON.stringify({rows,seq,ga:$('#greetA').value,gb:$('#greetB').value}))}catch(e){}}
+function load(){rows=[];seq=1;$('#greetA').value=G0.a;$('#greetB').value=G0.b;try{const d=JSON.parse(localStorage.getItem(KEYS[mode])||'null');if(d){rows=d.rows||[];seq=d.seq||1;if(d.ga)$('#greetA').value=d.ga;if(d.gb)$('#greetB').value=d.gb}}catch(e){}}
+function setMode(m){mode=m;try{localStorage.setItem('airConfirm.mode',m)}catch(e){}document.querySelectorAll('.tabs button').forEach(b=>b.classList.toggle('on',b.dataset.mode===m));
+  $('#src').value='';$('#prev').value='';$('#msgAdd').textContent='';$('#msgCmp').textContent='';$('#removed').innerHTML='';load();render()}
 
 /* ---------- helpers ---------- */
 const num=v=>{const n=parseFloat(String(v||'').replace(/[, ]/g,''));return isNaN(n)?null:n};
@@ -198,6 +220,7 @@ function parse(lines){
     if(!r.item && !r.part) continue;
     if(!/^F\d/i.test(r.fac) && !map) continue;
     r.fac=r.fac.toUpperCase();r.shortDel=normDate(r.shortDel);r.needEtd=normDate(r.needEtd)||'URGENT';
+    if(/>>/.test(r.req)){r.req=r.req.split('>>').pop().trim();if(!r.remark)r.remark="CHANGE Q'TY";if(num(r.req)===0)continue}   // "600>>2,100" → 2,100, "500>>0" → 취소된 행은 뺌
     r.req=fmtNum(r.req);r.stock=fmtNum(r.stock);
     res.push(r);
   }
@@ -219,13 +242,18 @@ function render(){
   });
   stats();renderOut();save();
 }
+function chips(){
+  const m=new Map();rows.forEach(r=>{const k=r.maker||'(Maker 없음)';const c=m.get(k)||{n:0,need:0,sel:0};c.n++;if(!String(r.confirm||'').trim())c.need++;if(r.sel)c.sel++;m.set(k,c)});
+  $('#chips').innerHTML=[...m.entries()].sort((a,b)=>a[0].localeCompare(b[0])).map(([k,c])=>`<button data-maker="${esc(k)}" class="${c.sel===c.n?'on':''}">${esc(k)} ${c.n}${c.need?` <span class="n">${c.need}</span>`:''}</button>`).join('');
+}
 function stats(){
+  chips();
   $('#cnt').textContent=rows.length+'건';
   $('#cntNeed').textContent='미컨펌 '+rows.filter(needsConfirm).length+'건';
 }
 $('#tb').addEventListener('change',e=>{
   const tr=e.target.closest('tr');const r=rows.find(x=>x.id==tr.dataset.id);const k=e.target.dataset.k;if(!r||!k)return;
-  if(k==='sel'){r.sel=e.target.checked;save();return}
+  if(k==='sel'){r.sel=e.target.checked;chips();save();return}
   let v=e.target.value;
   if(k==='confirm')v=normConfirm(v);
   if(k==='shortDel'||k==='needEtd')v=normDate(v);
@@ -240,6 +268,7 @@ $('#tb').addEventListener('click',e=>{
   if(!e.target.hasAttribute('data-del'))return;
   const id=e.target.closest('tr').dataset.id;rows=rows.filter(x=>x.id!=id);render();
 });
+$('#chips').addEventListener('click',e=>{const b=e.target.closest('[data-maker]');if(!b)return;const k=b.dataset.maker,mine=rows.filter(r=>(r.maker||'(Maker 없음)')===k),all=mine.every(r=>r.sel);mine.forEach(r=>r.sel=!all);render()});
 $('#chkAll').onchange=e=>{rows.forEach(r=>r.sel=e.target.checked);render()};
 
 /* ---------- paste capture (keeps HTML table structure) ---------- */
@@ -256,18 +285,44 @@ function hookPaste(el){
 hookPaste($('#src'));hookPaste($('#prev'));
 
 /* ---------- actions ---------- */
-$('#btnAdd').onclick=()=>{
-  const got=parse(cellsFromPaste($('#src').value));
-  if(!got.length){$('#msgAdd').textContent='인식된 행이 없습니다. 헤더(FAC, Item cd, Maker...)까지 같이 복사해 주세요.';return}
+function addLines(lines,label){
+  const got=parse(lines);
+  if(!got.length){$('#msgAdd').textContent='인식된 행이 없습니다. 헤더(FAC, Item cd, Maker...)까지 같이 넣어 주세요.';return false}
   let add=0,upd=0;const ow=$('#optOverwrite').checked;
   got.forEach(n=>{
     const ex=rows.find(r=>keyOf(r)===keyOf(n));
     if(ex){if(ow){FIELDS.forEach(f=>{if(n[f])ex[f]=n[f]});upd++}}
     else{rows.push({id:seq++,...n,auto:{}});add++}
   });
-  $('#msgAdd').textContent=`추가 ${add}건, 갱신 ${upd}건 (총 ${rows.length}건)`;
-  $('#src').value='';render();
-};
+  $('#msgAdd').textContent=`${label?label+': ':''}추가 ${add}건, 갱신 ${upd}건 (총 ${rows.length}건)`;
+  render();return true;
+}
+$('#btnAdd').onclick=()=>{if(addLines(cellsFromPaste($('#src').value)))$('#src').value=''};
+
+/* ---------- 엑셀 파일 그대로 넣기 (반장님 리스트 · 에어 리포트) ---------- */
+let fileWb=null,fileName='';
+const cellStr=v=>{if(v==null)return '';if(v instanceof Date){if(isNaN(v))return '';const d=new Date(v.getTime()+3600000);return dmy(d.getDate(),d.getMonth(),d.getFullYear())}return String(v).trim()};
+const sheetLines=sn=>XLSX.utils.sheet_to_json(fileWb.Sheets[sn],{header:1,defval:null,raw:true}).map(r=>(r||[]).map(cellStr));
+const isListSheet=sn=>sheetLines(sn).slice(0,12).some(c=>{const low=c.map(x=>x.toLowerCase());return low.some(x=>/^item/.test(x))&&low.some(x=>/^maker|^part/.test(x))&&low.some(x=>/^fac/.test(x))&&low.some(x=>/purchase|remain/.test(x))});   // 선박 표(ETD 열)는 빼고 에어 표만
+async function openFile(f){
+  try{fileWb=XLSX.read(await f.arrayBuffer(),{type:'array',cellDates:true});fileName=f.name}catch(e){$('#msgAdd').textContent='파일을 읽지 못했습니다: '+(e.message||e);return}
+  const cands=fileWb.SheetNames.filter(isListSheet);
+  $('#sheetSel').style.display=$('#btnSheet').style.display='none';
+  if(!cands.length){$('#msgAdd').textContent=`${f.name}: FAC / Item cd / Maker 머리글이 있는 표를 찾지 못했습니다.`;return}
+  if(cands.length===1){addLines(sheetLines(cands[0]),`${f.name} [${cands[0]}]`);return}
+  const want=mode==='wed'?/반장/:/^air\s*$/i, pick=cands.find(sn=>want.test(sn))||cands[0];   // 시트가 여러 개면 고르게: 수요일은 "반장님" 시트를 먼저 고른다
+  $('#sheetSel').innerHTML=cands.map(sn=>`<option ${sn===pick?'selected':''}>${esc(sn)}</option>`).join('');
+  $('#sheetSel').style.display=$('#btnSheet').style.display='';
+  $('#msgAdd').textContent=`${f.name}: 리스트가 있는 시트가 ${cands.length}개입니다. 넣을 시트를 고르고 "이 시트 넣기"를 누르세요.`;
+}
+$('#btnFile').onclick=()=>$('#fileIn').click();
+$('#fileIn').onchange=e=>{const f=e.target.files[0];if(f)openFile(f);e.target.value=''};
+$('#btnSheet').onclick=()=>{const sn=$('#sheetSel').value;if(addLines(sheetLines(sn),`${fileName} [${sn}]`)){$('#sheetSel').style.display=$('#btnSheet').style.display='none'}};
+const dz=$('#dropFile');
+dz.addEventListener('dragover',e=>{if([...e.dataTransfer.types].includes('Files')){e.preventDefault();dz.classList.add('over')}});
+dz.addEventListener('dragleave',()=>dz.classList.remove('over'));
+dz.addEventListener('drop',e=>{dz.classList.remove('over');const f=e.dataTransfer.files[0];if(f){e.preventDefault();openFile(f)}});
+
 $('#btnClear').onclick=()=>{if(confirm('입력한 리스트를 모두 지울까요?')){rows=[];render()}};
 $('#btnCompare').onclick=()=>{
   const prev=parse(cellsFromPaste($('#prev').value));
@@ -415,12 +470,13 @@ $('#btnXlsx').onclick=()=>{
   const wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,xlsxSheet(groupA()),'F1,2');
   XLSX.utils.book_append_sheet(wb,xlsxSheet(groupB()),'F5');
-  const d=new Date();const name=`에어컨펌_${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}.xlsx`;
+  const d=new Date();const name=`에어컨펌${mode==='wed'?'(수)':''}_${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}.xlsx`;
   XLSX.writeFile(wb,name);
   flash(`엑셀 다운로드됨 (F1,2: ${groupA().length}건 / F5: ${groupB().length}건)`);
 };
 
-load();render();
+document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{save();setMode(b.dataset.mode)});
+setMode(mode);
 })();
 </script>
 </body>
