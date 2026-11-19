@@ -111,9 +111,10 @@
     <button class="d" id="btnDelSel">선택 행 삭제</button>
     <span style="width:14px"></span>
     <button class="p" id="btnXlsx" title="메일 표와 같은 색·글씨로 F1,2 / F5 시트 엑셀을 내려받습니다">📊 엑셀 다운로드 (F1,2 / F5)</button>
+    <label class="hint" style="margin-left:6px"><input type="checkbox" id="onlyNeed"> 미컨펌 행만 보기</label>
     <button id="btnXlsxNeed" title="재고가 모자란데 CONFIRM이 비어 있는 품목(주황색 행)만 같은 모양의 엑셀로 내려받습니다">📊 미컨펌만 엑셀 다운로드</button>
   </div>
-  <div class="hint" style="margin-bottom:6px">CONFIRM: <b>11/17</b> → 17-Nov, <b>45k 11/17</b> → 45K 17-Nov 자동 변환 · 주황색 행 = 재고 부족인데 CONFIRM 없음(미컨펌) · <b>미컨펌만 엑셀 다운로드</b>는 이 주황색 행만 받습니다</div>
+  <div class="hint" style="margin-bottom:6px">CONFIRM: <b>11/17</b> → 17-Nov, <b>45k 11/17</b> → 45K 17-Nov 자동 변환 · 주황색 행 = 재고 부족인데 CONFIRM 없음(미컨펌) · 표의 모든 칸은 눌러서 바로 고칠 수 있습니다 · <b>미컨펌만 엑셀 다운로드</b>는 이 주황색 행만 받습니다</div>
   <div class="grid-wrap">
     <table class="g">
       <thead><tr>
@@ -234,6 +235,7 @@ function render(){
   rows.forEach(r=>{
     const tr=document.createElement('tr');
     if(needsConfirm(r)) tr.className='need';
+    else if($('#onlyNeed').checked) tr.style.display='none';   // "미컨펌 행만 보기": 나머지는 숨기기만 하고 지우지 않음
     if(r.fac==='F5') tr.classList.add('f5');
     tr.innerHTML=`<td><input type="checkbox" ${r.sel?'checked':''} data-k="sel"></td>`+
       FIELDS.map(f=>`<td><input type="text" data-k="${f}" value="${esc(r[f])}" class="${['req','stock'].includes(f)?'num':''}" style="${f==='part'?'min-width:220px':f==='fac'?'width:42px':''}"></td>`).join('')+
@@ -261,7 +263,7 @@ $('#tb').addEventListener('change',e=>{
   if(k==='fac')v=v.toUpperCase().trim();
   if(k==='remark'){r.auto={}}
   r[k]=v;e.target.value=v;
-  tr.classList.toggle('need',needsConfirm(r));tr.classList.toggle('f5',r.fac==='F5');
+  tr.classList.toggle('need',needsConfirm(r));tr.classList.toggle('f5',r.fac==='F5');   // 방금 채운 행은 다음에 다시 그릴 때 숨겨진다(입력 중에는 그대로 둠)
   stats();renderOut();save();
 });
 $('#tb').addEventListener('click',e=>{
@@ -269,6 +271,7 @@ $('#tb').addEventListener('click',e=>{
   const id=e.target.closest('tr').dataset.id;rows=rows.filter(x=>x.id!=id);render();
 });
 $('#chips').addEventListener('click',e=>{const b=e.target.closest('[data-maker]');if(!b)return;const k=b.dataset.maker,mine=rows.filter(r=>(r.maker||'(Maker 없음)')===k),all=mine.every(r=>r.sel);mine.forEach(r=>r.sel=!all);render()});
+$('#onlyNeed').onchange=()=>render();
 $('#chkAll').onchange=e=>{rows.forEach(r=>r.sel=e.target.checked);render()};
 
 /* ---------- paste capture (keeps HTML table structure) ---------- */
